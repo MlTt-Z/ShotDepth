@@ -1,0 +1,19 @@
+# Keep the first release source-only; add new public files explicitly.
+/*
+!/.gitignore
+!/README.md
+!/LICENSE
+!/AI_INTEGRATION.md
+!/requirements.txt
+!/启动 SpikeMark.cmd
+!/editor.html
+!/editor.py
+!/editor3d.js
+!/mcp_server.py
+!/scene.json
+!/scene.py
+!/spikemark.py
+!/vendor/
+/vendor/*
+!/vendor/LICENSE
+!/vendor/three.min.js
