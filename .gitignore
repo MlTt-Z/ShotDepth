@@ -42,3 +42,7 @@
 /examples/headless/*
 !/examples/headless/reproduce.py
 !/examples/headless/frames-1-13-25.jpg
+!/examples/demo/
+/examples/demo/*
+!/examples/demo/comparison.jpg
+!/examples/demo/framing-demo.mp4

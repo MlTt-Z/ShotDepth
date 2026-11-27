@@ -1,14 +1,25 @@
-# SpikeMark
+# ShotDepth — 3D shot layout and control export for AI video
 
-SpikeMark 是一款本地 3D 分镜、走位和构图工具。你可以摆放人物、道具和机位，编排动作，再将深度、实例 ID 蒙版和相机几何导出给外部 AI 视频工作流。**SpikeMark 不生成视频，不下载或附带模型权重，也不评价成片。**
+在 3D 中摆好人物和机位，把**深度图、实例 ID 蒙版与相机几何**导出给 ComfyUI 等视频工作流。<br>
+Block actors and cameras in 3D, then export **depth maps, instance ID masks, and camera geometry** to workflows such as ComfyUI.
 
-SpikeMark is a local 3D workspace for storyboarding, blocking, and shot composition. Place characters, props, and cameras, plan motion, and export depth, instance-ID masks, and camera geometry for external AI video workflows. **SpikeMark does not generate video, download or bundle model weights, or evaluate rendered footage.**
+[![同一提示词与 seed：有深度时左近右远，无深度时两人近似等高 / Same prompt and seed: depth preserves the intended foreground placement](examples/demo/comparison.jpg)](examples/demo/framing-demo.mp4)
+
+[观看 16 秒双语字幕演示 / Watch the 16-second demo](examples/demo/framing-demo.mp4)
+
+[不打开 App：通过 MCP 复现实例 / Reproduce via MCP without the app](#无界面复现--headless-reproduction)
+
+ShotDepth 只负责摆位、预览和导出控制数据。不生成视频、不下载或附带模型权重，也不评价成片。<br>
+ShotDepth handles blocking, previews, and control export. It does not generate or score video, nor download or bundle model weights.
+
+原名 SpikeMark。旧仓库地址会跳转到 ShotDepth；MCP 标识和 v1.1 下载文件名保持不变。<br>
+Formerly SpikeMark. The old repository URL redirects to ShotDepth; the MCP identifier and v1.1 download filenames are unchanged.
 
 v1.1 新增 Windows 桌面版、第一人称布景、实时预览，以及「简化 / 精确」两种界面模式。
 
 v1.1 adds a Windows desktop app, first-person staging, live previews, and Simple and Precision workspace modes.
 
-Windows x64 便携包 / Windows x64 portable build: [GitHub Release](https://github.com/MlTt-Z/SpikeMark/releases/tag/v1.1)（解压后运行 `SpikeMark.exe`，需要 Microsoft Edge WebView2 Runtime / Extract and run `SpikeMark.exe`; Microsoft Edge WebView2 Runtime required).
+Windows x64 便携包 / Windows x64 portable build: [GitHub Release](https://github.com/MlTt-Z/ShotDepth/releases/tag/v1.1)（解压后运行 `SpikeMark.exe`，需要 Microsoft Edge WebView2 Runtime / Extract and run `SpikeMark.exe`; Microsoft Edge WebView2 Runtime required).
 
 ## 下游对照 / Downstream comparison
 
@@ -56,9 +67,9 @@ python spikemark.py scene.json g0-b --edits examples/g0/shot-b-edits.json --vace
 
 No desktop app or browser is needed: place actors, check the preview, and export depth via MCP, then queue a with/without-depth pair through the local ComfyUI API. The script replays the coordinates chosen by the AI for this test; it is not a general text-to-scene tool.
 
-按上面的 G0 步骤准备模型并启动 ComfyUI，然后用已安装 SpikeMark 依赖的 Python 运行 [复现脚本 / reproduction script](examples/headless/reproduce.py)。将路径替换为该实例实际使用的输入目录；若不是默认端口，追加 `--port 8189` 等参数。只导出控制图可追加 `--controls-only`。
+按上面的 G0 步骤准备模型并启动 ComfyUI，然后用已安装本项目依赖的 Python 运行 [复现脚本 / reproduction script](examples/headless/reproduce.py)。将路径替换为该实例实际使用的输入目录；若不是默认端口，追加 `--port 8189` 等参数。只导出控制图可追加 `--controls-only`。
 
-Use the same models as G0 and start ComfyUI. Run the script with SpikeMark's Python dependencies installed, passing the actual ComfyUI input directory. Use `--port` for a non-default port or `--controls-only` to skip video jobs.
+Use the same models as G0 and start ComfyUI. Run the script with the project's Python dependencies installed, passing the actual ComfyUI input directory. Use `--port` for a non-default port or `--controls-only` to skip video jobs.
 
 ```powershell
 .\.venv\Scripts\python.exe examples/headless/reproduce.py "X:\ComfyUI\input"
