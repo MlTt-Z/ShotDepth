@@ -1,6 +1,12 @@
 # SpikeMark
 
-SpikeMark 是一款本地 3D 走位和构图工具。你可以摆放人物、道具和机位，再把深度、实例蒙版和相机几何交给外部 AI 视频工作流。**SpikeMark 不生成视频，不下载或附带模型权重，也不评价成片。**
+SpikeMark 是一款本地 3D 分镜、走位和构图工具。你可以摆放人物、道具和机位，编排动作，再将深度、实例 ID 蒙版和相机几何导出给外部 AI 视频工作流。**SpikeMark 不生成视频，不下载或附带模型权重，也不评价成片。**
+
+SpikeMark is a local 3D workspace for storyboarding, blocking, and shot composition. Place characters, props, and cameras, plan motion, and export depth, instance-ID masks, and camera geometry for external AI video workflows. **SpikeMark does not generate video, download or bundle model weights, or evaluate rendered footage.**
+
+v1.1 新增 Windows 桌面版、第一人称布景、实时预览，以及「简化 / 精确」两种界面模式。
+
+v1.1 adds a Windows desktop app, first-person staging, live previews, and Simple and Precision workspace modes.
 
 ## 快速开始
 

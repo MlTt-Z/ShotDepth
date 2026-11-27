@@ -115,14 +115,29 @@ def bbox(mask, region, w, h):
     return {'px': bounds, 'norm': [v/s for v, s in zip(bounds, [w, h, w, h])]}
 
 
-def _is_dynamic(doc):
+def _has_keyframes(doc):
     return any(entity.get('keyframes') for entity in doc['scene']['entities'])
+
+
+def _is_animated(doc):
+    # 首尾之外保持端点；端点之间插值。缺省关节与显式 0 等效。
+    def pose(key):
+        joints = {joint: angle for joint, angle in key['joints'].items() if angle}
+        return key['pos'], key['yaw'], joints
+
+    for entity in doc['scene']['entities']:
+        track = entity.get('keyframes')
+        if track:
+            first = pose(track[0])
+            if any(pose(key) != first for key in track[1:]):
+                return True
+    return False
 
 
 def compile_scene(doc, frame=0):
     """编译从零开始编号的指定镜头帧。"""
     validate_scene(doc)
-    return _compile_frame(doc, frame, _is_dynamic(doc))
+    return _compile_frame(doc, frame, _has_keyframes(doc))
 
 
 def _compile_frame(doc, frame, dynamic):
@@ -413,14 +428,16 @@ def control_package(document, vace_window=None) -> bytes:
         vace_window = (near, far)
 
     validate_scene(document)
-    if _is_dynamic(document):
+    if _is_animated(document):
         return _dynamic_control_package(document, vace_window)
 
+    # 恒定轨道也可能覆盖基础姿态；只用首帧快照渲染，归档仍保留原文档。
+    snapshot = scene.sample_scene(document, 0) if _has_keyframes(document) else document
     files = {'manifest': 'manifest.json', 'scene': 'scene.json', 'geometry': 'geometry.json',
              'depth': 'depth_m.npy', 'id_mask': 'id_mask.png', 'preview': 'preview.png'}
     with TemporaryDirectory(prefix='spikemark-') as workspace:
         out = Path(workspace) / 'controls'
-        geometry = export_scene(document, out, window=vace_window)
+        geometry = export_scene(snapshot, out, window=vace_window)
         shot = geometry['shot']
         manifest = {
             'version': '0.1', 'scene_version': document['version'], 'baseline': scene_baseline(document),

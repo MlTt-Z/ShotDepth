@@ -6,10 +6,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from scene import (
-    DEFAULT_HUMAN_BODY, component_catalog, frame_count, human_capsules, load_scene, prop_boxes,
-    sample_scene, validate_shot_set,
+    DEFAULT_HUMAN_BODY, MAX_DYNAMIC_FRAMES, component_catalog, frame_count, human_capsules, load_scene,
+    prop_boxes, sample_scene, validate_scene, validate_shot_set,
 )
-from spikemark import apply_edit, compile_scene, control_package, preview_image, scene_baseline
+from spikemark import apply_edit, compile_scene, control_package, edit_document, preview_image, scene_baseline
 
 
 def snapshot(document, depth, ids, geometry, frame=0, *, include_png=True):
@@ -36,6 +36,38 @@ def preview_snapshot(document, frame=0, *, include_png=True):
 
 def edit_snapshot(document, operations, frame=0, *, include_png=True):
     return snapshot(*apply_edit(document, operations, frame=frame), frame, include_png=include_png)
+
+
+LIVE_PREVIEW_MAX_EDGE = 320
+
+
+def live_preview(request):
+    """Render one reduced frame without committing edits or changing the playback source."""
+    required = {'document', 'operations', 'frame'}
+    if not isinstance(request, dict) or not required <= request.keys() <= required | {'pose'}:
+        raise ValueError('实时预览需要 document、operations、frame，可选 pose')
+    operations = request['operations']
+    if not isinstance(operations, list):
+        raise ValueError('operations: 需要操作数组')
+    if 'pose' in request:
+        pose = request['pose']
+        if not isinstance(pose, dict) or set(pose) != {'position', 'target'}:
+            raise ValueError('pose: 需要 position 和 target')
+    else:
+        pose = None
+
+    document = request['document']
+    # Check the original dimensions and the edited camera before either can be replaced.
+    document = edit_document(document, operations) if operations else validate_scene(document)
+    width, height = document['resolution']
+    scale = min(1, LIVE_PREVIEW_MAX_EDGE / max(width, height))
+    reduced = {**document, 'resolution': [max(1, round(width * scale)), max(1, round(height * scale))]}
+    if pose is not None:
+        reduced['camera'] = {**document['camera'], 'pos': pose['position'], 'look_at': pose['target']}
+    depth, ids, geometry = compile_scene(reduced, frame=request['frame'])
+    buffer = io.BytesIO()
+    preview_image(depth, ids, geometry).save(buffer, format='PNG')
+    return {'preview_png': base64.b64encode(buffer.getvalue()).decode('ascii'), 'geometry': geometry}
 
 
 def prepare_shots(shot_set):
@@ -104,8 +136,90 @@ def make_proposal(document, operations, frame=0, *, include_png=True):
     return review_proposal(document, proposal, frame, include_png=include_png)
 
 
+PLAYBACK_MAX_BYTES = 2 * 1024 * 1024
+
+
+def _playback_json(value):
+    return json.dumps(value, allow_nan=False, separators=(',', ':')).encode('utf-8')
+
+
+def _playback_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('播放请求不能包含重复的 JSON 字段')
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value):
+    raise ValueError(f'播放请求不接受 JSON 数值 {value}')
+
+
+def _playback_page(document, baseline, start):
+    count = frame_count(document)
+    if not 0 <= start < count:
+        raise ValueError(f'start_frame: 需要 [0, {count - 1}] 范围内的整数帧')
+    animated = [index for index, entity in enumerate(document['scene']['entities']) if entity.get('keyframes')]
+    prefix = _playback_json({'baseline': baseline, 'frame_count': count})[:-1] + b',"next_frame":'
+    # Reserve enough bytes for the longest possible next_frame and the frames array wrapper.
+    size = len(prefix) + max(len(str(count)), len('null')) + len(b',"frames":[]}')
+    frames = []
+    for frame in range(start, min(start + MAX_DYNAMIC_FRAMES, count)):
+        transforms, instances = [], []
+        if animated:
+            entities = sample_scene(document, frame)['scene']['entities']
+            for index in animated:
+                entity = entities[index]
+                transforms.append((index, entity['transform']))
+                instances.append((index, human_capsules(entity['body'], entity.get('joints'))))
+        entry = _playback_json({'frame': frame, 'transforms': transforms, 'instances': instances})
+        size += len(entry) + bool(frames)
+        if size > PLAYBACK_MAX_BYTES:
+            break
+        frames.append(entry)
+    if not frames:
+        raise ValueError('单个播放帧超出响应大小限制')
+    next_frame = start + len(frames)
+    return (prefix + _playback_json(next_frame if next_frame < count else None) +
+            b',"frames":[' + b','.join(frames) + b']}')
+
+
 def make_handler(initial, page, assets):
+    # Only one validated scene is retained. A cache miss can restart from document.
+    playback_source = (initial['baseline'], initial['document'])
+
     class EditorHandler(BaseHTTPRequestHandler):
+        def playback(self, request):
+            nonlocal playback_source
+            if not isinstance(request, dict) or set(request) not in (
+                {'document', 'start_frame'}, {'baseline', 'start_frame'},
+            ):
+                raise ValueError('播放请求需要 start_frame 和 document 或 baseline')
+            start = request['start_frame']
+            if type(start) is not int or start < 0:
+                raise ValueError('start_frame: 需要非负整数帧')
+            cached_baseline, cached_doc = playback_source
+            if 'baseline' in request:
+                baseline = request['baseline']
+                if (not isinstance(baseline, str) or len(baseline) != 64 or
+                        any(c not in '0123456789abcdef' for c in baseline)):
+                    raise ValueError('baseline: 需要 64 位小写十六进制摘要')
+                if baseline != cached_baseline:
+                    self.send_json(409, {'error': '播放基线已失效，请携带 document 重试'})
+                    return
+                doc = cached_doc
+            else:
+                doc = request['document']
+                baseline = scene_baseline(doc)
+                if baseline == cached_baseline:
+                    doc = cached_doc
+                else:
+                    validate_scene(doc)
+            content = _playback_page(doc, baseline, start)
+            playback_source = baseline, doc
+            self.send_bytes(200, content, 'application/json; charset=utf-8')
+
         def send_bytes(self, code, content, content_type):
             self.send_response(code)
             self.send_header('Content-Type', content_type)
@@ -140,9 +254,11 @@ def make_handler(initial, page, assets):
                 self.send_json(404, {'error': '未找到页面'})
 
         def do_POST(self):
+            nonlocal playback_source
             if not self.allowed_host():
                 return
-            if self.path not in ('/api/edit', '/api/preview', '/api/export', '/api/proposal', '/api/shot-set'):
+            if self.path not in ('/api/edit', '/api/preview', '/api/export', '/api/proposal', '/api/shot-set',
+                                 '/api/playback', '/api/live-preview'):
                 self.send_json(404, {'error': '未找到接口'})
                 return
             origin = self.headers.get('Origin')
@@ -156,8 +272,20 @@ def make_handler(initial, page, assets):
                 length = int(self.headers.get('Content-Length', '0'))
                 if not 0 < length <= (12 if self.path == '/api/shot-set' else 1) * 512 * 1024:
                     raise ValueError('请求大小超出限制')
+                if self.path == '/api/playback':
+                    if len(self.headers.get_all('Content-Length', [])) != 1 or self.headers.get('Transfer-Encoding') is not None:
+                        raise ValueError('播放请求需要且只接受 Content-Length 定界')
+                    body = self.rfile.read(length)
+                    if len(body) != length:
+                        raise ValueError('播放请求长度不符')
+                    request = json.loads(body.decode('utf-8'), object_pairs_hook=_playback_object,
+                                         parse_constant=_reject_json_constant)
+                    self.playback(request)
+                    return
                 request = json.loads(self.rfile.read(length).decode('utf-8'))
-                if self.path == '/api/shot-set':
+                if self.path == '/api/live-preview':
+                    result = live_preview(request)
+                elif self.path == '/api/shot-set':
                     if not isinstance(request, dict) or set(request) != {'shot_set'}:
                         raise ValueError('请求需要且只接受 shot_set')
                     result = prepare_shots(request['shot_set'])
@@ -182,6 +310,8 @@ def make_handler(initial, page, assets):
             except (ValueError, RecursionError) as exc:
                 self.send_json(400, {'error': str(exc)})
                 return
+            if self.path in ('/api/edit', '/api/preview'):
+                playback_source = result['baseline'], result['document']
             self.send_json(200, result)
 
     return EditorHandler

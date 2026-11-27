@@ -17,3 +17,9 @@
 /vendor/*
 !/vendor/LICENSE
 !/vendor/three.min.js
+!/desktop/
+/desktop/*
+!/desktop/.gitignore
+!/desktop/*.cs
+!/desktop/SpikeMark.Desktop.csproj
+!/desktop/build.ps1
