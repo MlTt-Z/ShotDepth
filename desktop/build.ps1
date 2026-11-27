@@ -33,7 +33,7 @@ function Invoke-Checked([string]$Executable, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$Executable exited with code $LASTEXITCODE." }
 }
 
-$name = 'SpikeMark-win-x64-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff')
+$name = 'ShotDepth-win-x64-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff')
 $stage = Join-Path $build $name
 $server = Join-Path $stage 'server'
 $python = Join-Path $server 'python'
@@ -58,7 +58,7 @@ Invoke-Checked $BuildPython ($pyPrefix + @('-m', 'pip', '--disable-pip-version-c
     '--only-binary=:all:', '--platform', 'win_amd64', '--implementation', 'cp', '--python-version', '3.13',
     '--abi', 'cp313', '--target', $site, '-r', (Join-Path $root 'requirements.txt')))
 
-$files = 'editor.py', 'editor.html', 'editor3d.js', 'scene.py', 'scene.json', 'spikemark.py', 'mcp_server.py', 'requirements.txt', 'LICENSE', 'vendor'
+$files = 'editor.py', 'editor.html', 'editor3d.js', 'scene.py', 'scene.json', 'shotdepth.py', 'mcp_server.py', 'requirements.txt', 'LICENSE', 'vendor'
 foreach ($file in $files) {
     Copy-Item -LiteralPath (Join-Path $root $file) -Destination $server -Recurse
 }
@@ -71,4 +71,4 @@ if ($Zip) {
     [IO.Compression.ZipFile]::CreateFromDirectory($release, "$release.zip", [IO.Compression.CompressionLevel]::Optimal, $true)
     Write-Output "$release.zip"
 }
-Write-Output (Join-Path $release 'SpikeMark.exe')
+Write-Output (Join-Path $release 'ShotDepth.exe')

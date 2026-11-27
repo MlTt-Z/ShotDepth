@@ -33,7 +33,7 @@ internal sealed class EditorWindow : Window
 
     public EditorWindow()
     {
-        Title = "SpikeMark";
+        Title = "ShotDepth";
         Width = 1360;
         Height = 860;
         MinWidth = 680;
@@ -73,7 +73,7 @@ internal sealed class EditorWindow : Window
         {
             args.Cancel = MessageBox.Show(this,
                 "有未应用的草稿或未导出的场景修改。退出将丢弃这些内容；如需保留，请取消退出，先应用草稿（如有），再导出场景 JSON。",
-                "退出 SpikeMark", MessageBoxButton.OKCancel, MessageBoxImage.Warning,
+                "退出 ShotDepth", MessageBoxButton.OKCancel, MessageBoxImage.Warning,
                 MessageBoxResult.Cancel) != MessageBoxResult.OK;
         }
         finally { _confirmingClose = false; }
@@ -134,7 +134,7 @@ internal sealed class EditorWindow : Window
         }
         catch (Exception error) when (!_closing.IsCancellationRequested)
         {
-            StartupError("无法启动 SpikeMark：" + error.Message);
+            StartupError("无法启动 ShotDepth：" + error.Message);
         }
         catch (Exception) when (_closing.IsCancellationRequested) { }
     }
@@ -284,9 +284,9 @@ internal sealed class EditorWindow : Window
                 if (_closing.IsCancellationRequested || !IsTrusted(core.Source)) return false;
                 var dialog = new SaveFileDialog
                 {
-                    Title = "保存 SpikeMark 文件",
+                    Title = "保存 ShotDepth 文件",
                     FileName = Path.GetFileName(args.ResultFilePath),
-                    Filter = "SpikeMark 文件 (*.json;*.zip)|*.json;*.zip|所有文件 (*.*)|*.*",
+                    Filter = "ShotDepth 文件 (*.json;*.zip)|*.json;*.zip|所有文件 (*.*)|*.*",
                     OverwritePrompt = true,
                     AddExtension = true,
                     DefaultExt = Path.GetExtension(args.ResultFilePath),

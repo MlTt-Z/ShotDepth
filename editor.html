@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SpikeMark · 场景工作台</title>
+<title>ShotDepth · 场景工作台</title>
 <style>
   :root {
     color-scheme: dark;
@@ -1181,7 +1181,7 @@ function download(blob, extension, versions) {
   if (window.chrome?.webview) pendingSceneExports.set(url, { label, versions });
   const link = document.createElement('a');
   link.href = url;
-  link.download = `spikemark-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`;
+  link.download = `shotdepth-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`;
   document.body.append(link);
   link.click();
   link.remove();

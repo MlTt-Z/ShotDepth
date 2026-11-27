@@ -1,13 +1,13 @@
-# SpikeMark：外部 AI 调用契约
+# ShotDepth：外部 AI 调用契约
 
-SpikeMark 接收结构化场景，提供可编辑的 3D 镜头沙盒、CPU 预览和控制包。它不生成视频。下游工作流自行决定如何使用深度、蒙版、几何和文字意图。
+ShotDepth 接收结构化场景，提供可编辑的 3D 镜头沙盒、CPU 预览和控制包。它不生成视频。下游工作流自行决定如何使用深度、蒙版、几何和文字意图。
 
 ## 1. 入口与调用顺序
 
-- **MCP（stdio）**：客户端以项目 Python（已安装项目依赖）启动 `mcp_server.py`，可选 `--scene <场景文件>`。Windows 配置示例（将 `X:\path\to\SpikeMark` 替换为实际项目目录；JSON 中的反斜杠需写成 `\\`）：
+- **MCP（stdio）**：客户端以项目 Python（已安装项目依赖）启动 `mcp_server.py`，可选 `--scene <场景文件>`。为兼容现有集成，MCP 服务名 `SpikeMark`、资源 URI 前缀 `spikemark://` 和配置键 `mcpServers.spikemark` 均沿用旧标识。Windows 配置示例（将 `X:\path\to\ShotDepth` 替换为实际项目目录；JSON 中的反斜杠需写成 `\\`）：
 
 ```json
-{"mcpServers":{"spikemark":{"command":"X:\\path\\to\\SpikeMark\\.venv\\Scripts\\python.exe","args":["X:\\path\\to\\SpikeMark\\mcp_server.py"]}}}
+{"mcpServers":{"spikemark":{"command":"X:\\path\\to\\ShotDepth\\.venv\\Scripts\\python.exe","args":["X:\\path\\to\\ShotDepth\\mcp_server.py"]}}}
 ```
 
 - **HTTP**：本机用项目 Python 启动 `editor.py`，默认 `http://127.0.0.1:8766`；可用 `--port` 指定端口。POST 使用 `Content-Type: application/json`。服务只监听本机，远端 AI 不应尝试直接连接用户机器的回环地址；可由本机 MCP 客户端或用户交换 JSON。

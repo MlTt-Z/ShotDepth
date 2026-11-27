@@ -14,7 +14,7 @@ from editor import (
     preview_snapshot, review_proposal as inspect_proposal,
 )
 from scene import component_catalog, load_scene
-from spikemark import compile_scene, control_package, preview_image
+from shotdepth import compile_scene, control_package, preview_image
 
 
 def _scene_result(snapshot):
@@ -105,7 +105,7 @@ def make_server(scene_path: Path) -> FastMCP:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='启动 SpikeMark MCP stdio 服务')
+    parser = argparse.ArgumentParser(description='启动 ShotDepth MCP stdio 服务')
     parser.add_argument('--scene', type=Path, default=Path(__file__).with_name('scene.json'))
     args = parser.parse_args()
     make_server(args.scene.resolve()).run(transport='stdio')

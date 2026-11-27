@@ -476,7 +476,7 @@ def preview_image(depth, ids, geometry):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='SpikeMark M0：用 CPU 编译固定镜头的场景。')
+    parser = argparse.ArgumentParser(description='ShotDepth M0：用 CPU 编译固定镜头的场景。')
     parser.add_argument('scene', help='输入场景 JSON')
     parser.add_argument('output', help='尚不存在的输出目录')
     parser.add_argument('--edits', help='语义操作数组 JSON；不覆盖原场景')

@@ -19,7 +19,7 @@ v1.1 新增 Windows 桌面版、第一人称布景、实时预览，以及「简
 
 v1.1 adds a Windows desktop app, first-person staging, live previews, and Simple and Precision workspace modes.
 
-Windows x64 便携包 / Windows x64 portable build: [GitHub Release](https://github.com/MlTt-Z/ShotDepth/releases/tag/v1.1)（解压后运行 `SpikeMark.exe`，需要 Microsoft Edge WebView2 Runtime / Extract and run `SpikeMark.exe`; Microsoft Edge WebView2 Runtime required).
+Windows x64 便携包 / Windows x64 portable build: [v1.1 GitHub Release](https://github.com/MlTt-Z/ShotDepth/releases/tag/v1.1)（旧版解压后运行 `SpikeMark.exe`；当前源码构建生成 `ShotDepth.exe`。两者均需要 Microsoft Edge WebView2 Runtime / Extract and run `SpikeMark.exe` for the historical release; current source builds produce `ShotDepth.exe`. Both require Microsoft Edge WebView2 Runtime).
 
 ## 下游对照 / Downstream comparison
 
@@ -48,8 +48,8 @@ All four Wan2.1 VACE 1.3B clips rendered successfully. On frames 1, 13, and 25, 
 1. A 使用 [scene.json](scene.json)，B 应用 [摆位改动](examples/g0/shot-b-edits.json)。可用以下命令重新导出（输出目录不得已存在）：
 
 ```powershell
-python spikemark.py scene.json g0-a --vace-depth 2 7
-python spikemark.py scene.json g0-b --edits examples/g0/shot-b-edits.json --vace-depth 2 7
+python shotdepth.py scene.json g0-a --vace-depth 2 7
+python shotdepth.py scene.json g0-b --edits examples/g0/shot-b-edits.json --vace-depth 2 7
 ```
 
 2. 启动 ComfyUI，准备 `wan2.1_vace_1.3B_fp16.safetensors`、`umt5_xxl_fp8_e4m3fn_scaled.safetensors`、`wan_2.1_vae.safetensors`，分别放入 `models/diffusion_models`、`models/text_encoders`、`models/vae`。把本页两张深度图放入 ComfyUI 输入目录的 `spikemark-g0/A/vace_depth.png` 和 `spikemark-g0/B/vace_depth.png`。
@@ -91,7 +91,7 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe editor.py --open
 ```
 
-安装依赖后也可双击 `启动 SpikeMark.cmd`。默认地址为 `http://127.0.0.1:8766`，可用 `--port` 更改端口。服务仅用于本机，不要通过代理或端口转发公开它。
+安装依赖后也可双击 `启动 ShotDepth.cmd`。默认地址为 `http://127.0.0.1:8766`，可用 `--port` 更改端口。服务仅用于本机，不要通过代理或端口转发公开它。
 
 ## 从构图到导出
 
@@ -109,7 +109,7 @@ py -3.11 -m venv .venv
 也可从命令行编译示例场景，输出目录必须尚不存在：
 
 ```powershell
-.\.venv\Scripts\python.exe spikemark.py scene.json output
+.\.venv\Scripts\python.exe shotdepth.py scene.json output
 ```
 
 ## 许可

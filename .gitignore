@@ -5,14 +5,14 @@
 !/LICENSE
 !/AI_INTEGRATION.md
 !/requirements.txt
-!/启动 SpikeMark.cmd
+!/启动 ShotDepth.cmd
 !/editor.html
 !/editor.py
 !/editor3d.js
 !/mcp_server.py
 !/scene.json
 !/scene.py
-!/spikemark.py
+!/shotdepth.py
 !/vendor/
 /vendor/*
 !/vendor/LICENSE

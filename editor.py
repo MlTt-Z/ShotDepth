@@ -9,7 +9,7 @@ from scene import (
     DEFAULT_HUMAN_BODY, MAX_DYNAMIC_FRAMES, component_catalog, frame_count, human_capsules, load_scene,
     prop_boxes, sample_scene, validate_scene, validate_shot_set,
 )
-from spikemark import apply_edit, compile_scene, control_package, edit_document, preview_image, scene_baseline
+from shotdepth import apply_edit, compile_scene, control_package, edit_document, preview_image, scene_baseline
 
 
 def snapshot(document, depth, ids, geometry, frame=0, *, include_png=True):
@@ -319,7 +319,7 @@ def make_handler(initial, page, assets):
 
 def main():
     root = Path(__file__).resolve().parent
-    parser = argparse.ArgumentParser(description='启动 SpikeMark 本地场景编辑器')
+    parser = argparse.ArgumentParser(description='启动 ShotDepth 本地场景编辑器')
     parser.add_argument('--scene', type=Path, default=root/'scene.json')
     parser.add_argument('--port', type=int, default=8766)
     parser.add_argument('--open', action='store_true', help='启动后打开默认浏览器')

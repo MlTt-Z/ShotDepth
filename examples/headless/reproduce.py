@@ -51,7 +51,7 @@ async def controls():
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Reproduce the SpikeMark MCP → ComfyUI depth comparison.')
+    parser = argparse.ArgumentParser(description='Reproduce the ShotDepth MCP → ComfyUI depth comparison.')
     parser.add_argument('input_dir', type=Path, help='Input folder of the local ComfyUI instance')
     parser.add_argument('--port', type=int, default=8188, help='Local ComfyUI port')
     parser.add_argument('--controls-only', action='store_true', help='Export inputs without submitting video jobs')
