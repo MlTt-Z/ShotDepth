@@ -1,0 +1,4 @@
+[
+  {"op":"set_transform","entity":"human_left","pos":[-1.2,0,4.15]},
+  {"op":"set_transform","entity":"human_right","pos":[0.75,0,3.3]}
+]

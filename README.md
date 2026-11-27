@@ -8,6 +8,46 @@ v1.1 新增 Windows 桌面版、第一人称布景、实时预览，以及「简
 
 v1.1 adds a Windows desktop app, first-person staging, live previews, and Simple and Precision workspace modes.
 
+## 下游对照 / Downstream comparison
+
+同一机位、同一提示词和 seed：A 中屏幕左侧人物更近，B 中右侧人物更近。无深度组不提供这一信息。案例检验**模型是否跟随人物的相对占画大小**，不检验动作、身份一致性或通用生成质量。
+
+Same camera, prompt, and seed: the left actor is closer in A, the right actor in B. The no-depth runs receive neither layout. This checks relative on-screen size, not motion, identity, or general video quality.
+
+| 镜头 / Shot | 3D 场景预览 / 3D scene preview | VACE 深度 / Depth |
+| --- | --- | --- |
+| A · 左近 / Left closer | ![A 预览](examples/g0/A/preview.png) | ![A 深度](examples/g0/A/vace_depth.png) |
+| B · 右近 / Right closer | ![B 预览](examples/g0/B/preview.png) | ![B 深度](examples/g0/B/vace_depth.png) |
+
+**判定标准 / Pass criteria**：在视频第 1、13、25 帧（从 1 开始计），两人均完整可见；A 中左人更高，B 中右人更高，且每帧较高者的像素身高至少是另一人的 1.10 倍。无深度组保留作对照，不要求它失败。单个 seed 不代表普遍有效。
+
+**实测结果 / Results**：Wan2.1 VACE 1.3B 的四组视频均生成成功。人工检查第 1、13、25 帧：A 有深度组三帧均左人更高，B 有深度组三帧均右人更高；六帧均完整显示两人，较高者约为另一人的 1.3 倍，超过 1.10 的门槛。两组无深度视频在抽检帧中均出现三人。
+
+All four Wan2.1 VACE 1.3B clips rendered successfully. On frames 1, 13, and 25, both depth-conditioned clips show two full-body actors. The left actor is taller in A and the right actor in B, at roughly 1.3× the other actor's on-screen height. Both no-depth clips show three people in all sampled frames. This is one seed and one setup, not a general benchmark.
+
+![四组视频的第 1、13、25 帧 / Frames 1, 13 and 25 of the four clips](examples/g0/frames-1-13-25.jpg)
+
+成片 / Clips: [A 有深度 / Depth](examples/g0/A/depth.mp4) · [A 无深度 / No depth](examples/g0/A/no_depth.mp4) · [B 有深度 / Depth](examples/g0/B/depth.mp4) · [B 无深度 / No depth](examples/g0/B/no_depth.mp4)
+
+<details>
+<summary>复现步骤 / Reproduce</summary>
+
+1. A 使用 [scene.json](scene.json)，B 应用 [摆位改动](examples/g0/shot-b-edits.json)。可用以下命令重新导出（输出目录不得已存在）：
+
+```powershell
+python spikemark.py scene.json g0-a --vace-depth 2 7
+python spikemark.py scene.json g0-b --edits examples/g0/shot-b-edits.json --vace-depth 2 7
+```
+
+2. 启动 ComfyUI，准备 `wan2.1_vace_1.3B_fp16.safetensors`、`umt5_xxl_fp8_e4m3fn_scaled.safetensors`、`wan_2.1_vae.safetensors`，分别放入 `models/diffusion_models`、`models/text_encoders`、`models/vae`。把本页两张深度图放入 ComfyUI 输入目录的 `spikemark-g0/A/vace_depth.png` 和 `spikemark-g0/B/vace_depth.png`。
+3. 运行 [queue.ps1](examples/g0/queue.ps1) 提交四个任务。它使用 [ComfyUI API 工作流](examples/g0/workflow_api.json)（不是用于拖入画布的 UI 工作流）。A/B 有深度组只更换输入图，无深度组只移除深度连接。均为 832×480、25 帧、24 fps、seed `20261127`。无深度的 A/B 输入相同；重复运行用于保持配对清晰，而不是两次独立试验。
+
+```powershell
+.\examples\g0\queue.ps1
+```
+
+</details>
+
 ## 快速开始
 
 需要 Python 3.11 和现代浏览器。控制数据由 CPU 计算；交互式 3D 使用 WebGL，不可用时可使用表单和二维视图。Three.js 随项目提供，运行编辑器不依赖 CDN。
