@@ -8,6 +8,8 @@ v1.1 新增 Windows 桌面版、第一人称布景、实时预览，以及「简
 
 v1.1 adds a Windows desktop app, first-person staging, live previews, and Simple and Precision workspace modes.
 
+Windows x64 便携包 / Windows x64 portable build: [GitHub Release](https://github.com/MlTt-Z/SpikeMark/releases/tag/v1.1)（解压后运行 `SpikeMark.exe`，需要 Microsoft Edge WebView2 Runtime / Extract and run `SpikeMark.exe`; Microsoft Edge WebView2 Runtime required).
+
 ## 下游对照 / Downstream comparison
 
 同一机位、同一提示词和 seed：A 中屏幕左侧人物更近，B 中右侧人物更近。无深度组不提供这一信息。案例检验**模型是否跟随人物的相对占画大小**，不检验动作、身份一致性或通用生成质量。
@@ -47,6 +49,24 @@ python spikemark.py scene.json g0-b --edits examples/g0/shot-b-edits.json --vace
 ```
 
 </details>
+
+## 无界面复现 / Headless reproduction
+
+不打开桌面端或网页：用 MCP 摆位、检查预览并导出深度图，再通过本机 ComfyUI API 对比有／无深度的成片。示例脚本重放 AI 在这次试验中选定的坐标，不接受任意自然语言输入。
+
+No desktop app or browser is needed: place actors, check the preview, and export depth via MCP, then queue a with/without-depth pair through the local ComfyUI API. The script replays the coordinates chosen by the AI for this test; it is not a general text-to-scene tool.
+
+按上面的 G0 步骤准备模型并启动 ComfyUI，然后用已安装 SpikeMark 依赖的 Python 运行 [复现脚本 / reproduction script](examples/headless/reproduce.py)。将路径替换为该实例实际使用的输入目录；若不是默认端口，追加 `--port 8189` 等参数。只导出控制图可追加 `--controls-only`。
+
+Use the same models as G0 and start ComfyUI. Run the script with SpikeMark's Python dependencies installed, passing the actual ComfyUI input directory. Use `--port` for a non-default port or `--controls-only` to skip video jobs.
+
+```powershell
+.\.venv\Scripts\python.exe examples/headless/reproduce.py "X:\ComfyUI\input"
+```
+
+同提示词、同 seed（`20261128`），抽查第 1、13、25 帧：有深度时左侧人物明显更大，无深度时两人近似等高。这是一次构图遵从度对照，不代表画质提升。 / Same prompt and seed (`20261128`): in sampled frames 1, 13, and 25, the left actor appears clearly taller with depth and both are nearly equal in height without it. This tests framing adherence, not video quality.
+
+![上：有深度；下：无深度 / Top: with depth; bottom: without depth](examples/headless/frames-1-13-25.jpg)
 
 ## 快速开始
 

@@ -38,3 +38,7 @@
 !/examples/g0/frames-1-13-25.jpg
 !/examples/g0/[AB]/depth.mp4
 !/examples/g0/[AB]/no_depth.mp4
+!/examples/headless/
+/examples/headless/*
+!/examples/headless/reproduce.py
+!/examples/headless/frames-1-13-25.jpg
