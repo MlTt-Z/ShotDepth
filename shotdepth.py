@@ -119,7 +119,7 @@ def _has_keyframes(doc):
     return any(entity.get('keyframes') for entity in doc['scene']['entities'])
 
 
-def _is_animated(doc):
+def is_animated(doc):
     # 首尾之外保持端点；端点之间插值。缺省关节与显式 0 等效。
     def pose(key):
         joints = {joint: angle for joint, angle in key['joints'].items() if angle}
@@ -140,16 +140,19 @@ def compile_scene(doc, frame=0):
     return _compile_frame(doc, frame, _has_keyframes(doc))
 
 
-def _compile_frame(doc, frame, dynamic):
+def _compile_frame(doc, frame, dynamic, *, validate_snapshot=True, check=None):
     try:
+        if check is not None:
+            check()
         if dynamic:
             snapshot = scene.sample_scene(doc, frame)
-            validate_scene(snapshot)
+            if validate_snapshot:
+                validate_scene(snapshot)
         else:
             if type(frame) is not int or not 0 <= frame < scene.frame_count(doc):
                 raise ValueError('frame: 必须是镜头范围内的整数')
             snapshot = doc
-        depth, ids, geometry = _compile_snapshot(snapshot)
+        depth, ids, geometry = _compile_snapshot(snapshot, check=check)
     except ValueError as exc:
         raise ValueError(f'第 {frame} 帧 (frame {frame}): {exc}') from exc
     if dynamic:
@@ -157,7 +160,7 @@ def _compile_frame(doc, frame, dynamic):
     return depth, ids, geometry
 
 
-def _compile_snapshot(doc):
+def _compile_snapshot(doc, *, check=None):
     w, h = doc['resolution']
     camera = doc['camera']
     near, far = camera['near'], camera['far']
@@ -175,6 +178,8 @@ def _compile_snapshot(doc):
     ids = np.zeros((h, w), dtype=np.uint16)
     entities, diagnostics, world_bounds = [], [], []
     for number, entity in enumerate(doc['scene']['entities'], 1):
+        if check is not None:
+            check()
         entity_id, kind = entity['id'], entity['kind']
         transform = entity['transform']
         pos, rot = np.asarray(transform['pos']), rotation_y(transform.get('yaw', 0))
@@ -214,6 +219,8 @@ def _compile_snapshot(doc):
                 hit = box_hit(local_origin, rays[region] @ rot, lows[0], highs[0], near, far)
             else:
                 for index, verts in enumerate(part_vertices):
+                    if check is not None:
+                        check()
                     area, _ = image_region(verts, origin, axes, k, near, far, w, h)
                     area = tuple(slice(max(s.start, t.start), min(s.stop, t.stop)) for s, t in zip(area, region))
                     if any(s.stop <= s.start for s in area):
@@ -234,6 +241,8 @@ def _compile_snapshot(doc):
 
     details = {}
     for number, entity_id, kind, region, projected, pixels, clipped in entities:
+        if check is not None:
+            check()
         visible = ids[region] == number
         count = int(visible.sum())
         if not pixels:
@@ -428,7 +437,7 @@ def control_package(document, vace_window=None) -> bytes:
         vace_window = (near, far)
 
     validate_scene(document)
-    if _is_animated(document):
+    if is_animated(document):
         return _dynamic_control_package(document, vace_window)
 
     # 恒定轨道也可能覆盖基础姿态；只用首帧快照渲染，归档仍保留原文档。

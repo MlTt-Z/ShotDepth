@@ -38,7 +38,7 @@ $stage = Join-Path $build $name
 $server = Join-Path $stage 'server'
 $python = Join-Path $server 'python'
 $site = Join-Path $python 'Lib\site-packages'
-$project = Join-Path $PSScriptRoot 'SpikeMark.Desktop.csproj'
+$project = Join-Path $PSScriptRoot 'ShotDepth.Desktop.csproj'
 Invoke-Checked $Dotnet @('publish', $project, '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-o', $stage)
 New-Item -ItemType Directory -Force $server | Out-Null
 
@@ -58,11 +58,39 @@ Invoke-Checked $BuildPython ($pyPrefix + @('-m', 'pip', '--disable-pip-version-c
     '--only-binary=:all:', '--platform', 'win_amd64', '--implementation', 'cp', '--python-version', '3.13',
     '--abi', 'cp313', '--target', $site, '-r', (Join-Path $root 'requirements.txt')))
 
-$files = 'editor.py', 'editor.html', 'editor3d.js', 'scene.py', 'scene.json', 'shotdepth.py', 'mcp_server.py', 'requirements.txt', 'LICENSE', 'vendor'
+$files = 'editor.py', 'editor.html', 'editor3d.js', 'scene.py', 'scene.json', 'shotdepth.py', 'depth_export.py', 'mcp_server.py', 'requirements.txt', 'LICENSE', 'vendor'
 foreach ($file in $files) {
     Copy-Item -LiteralPath (Join-Path $root $file) -Destination $server -Recurse
 }
-Invoke-Checked (Join-Path $python 'python.exe') @('-B', '-c', 'import editor, mcp_server, numpy, PIL; print(numpy.__version__, PIL.__version__)')
+foreach ($file in 'README.md', 'AI_INTEGRATION.md') {
+    Copy-Item -LiteralPath (Join-Path $root $file) -Destination $stage
+}
+
+# Use the packaged runtime and decode both image formats before publishing the stage.
+$smoke = @'
+from io import BytesIO
+from pathlib import Path
+
+import editor, mcp_server, numpy, PIL
+from depth_export import export_depth
+from PIL import Image, ImageSequence
+from scene import load_scene
+
+scene = load_scene(Path(editor.__file__).with_name('scene.json'))
+scene['resolution'] = [160, 96]
+png, mime = export_depth(scene, 'vace-png')
+with Image.open(BytesIO(png)) as image:
+    assert (mime, image.format, image.size) == ('image/png', 'PNG', (160, 96))
+    assert image.getextrema()[0][0] < image.getextrema()[0][1], 'PNG has no depth contrast'
+    pixels = image.tobytes()
+webp, mime = export_depth(scene, 'fun-webp', frames=5)
+with Image.open(BytesIO(webp)) as image:
+    assert (mime, image.format, image.size, image.n_frames) == ('image/webp', 'WEBP', (160, 96), 5)
+    assert all(frame.convert('RGB').tobytes() == pixels for frame in ImageSequence.Iterator(image))
+print(f'Embedded Python smoke OK: NumPy {numpy.__version__}, Pillow {PIL.__version__}, PNG and 5-frame WebP')
+'@
+$smoke | & (Join-Path $python 'python.exe') -B -
+if ($LASTEXITCODE -ne 0) { throw "Embedded Python smoke failed (exit code $LASTEXITCODE)." }
 
 $release = Join-Path $artifacts $name
 Move-Item -LiteralPath $stage -Destination $release

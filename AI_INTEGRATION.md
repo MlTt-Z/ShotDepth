@@ -97,3 +97,56 @@ ShotDepth 接收结构化场景，提供可编辑的 3D 镜头沙盒、CPU 预�
   "operations": [{"op":"set_action_text","text":"人物转身后整理衣袖；整理衣袖仅作文字说明。"}]
 }
 ```
+
+## 5. Wan2.1 Fun Control 深度输入（实验性）
+
+用 `export_controls` 或 `/api/export` 获得控制 ZIP，再从仓库根目录转换为无损动画 WebP。无需传 `vace_window`；转换读取原始米制相机 Z 深度，不读取实例 ID 蒙版。
+
+```powershell
+.\.venv\Scripts\python.exe examples/fun_control/export_webp.py controls.zip depth.webp --frames 25 --vace-depth 2 7
+```
+
+在 [ComfyUI 官方 Fun Control 工作流](https://docs.comfy.org/zh/tutorials/video/wan/fun-control) 中，用原生 `Load Image` 载入 `depth.webp`，将其 `IMAGE` 直接接到 `WanFunControlToVideo.control_video`，绕过 Canny 和估深节点。目标宽高和帧数与 WebP 保持一致；保存视频时另行设置相同帧率。此路径需要 Wan2.1 Fun 1.3B **Control** 权重，不是 VACE 权重。
+
+- 宽高须为 16 的倍数，帧数须为至少 5 的 `4n+1`；另受已有帧数与累计像素预算限制。
+- 静态包按 `--frames` 重复。动态包不得补帧或截断，目标帧数及帧率必须匹配清单。
+- 默认沿用清单中的深度窗口（若无则用相机近远裁切面）；可用 `--vace-depth` 指定固定近远窗口，近亮远暗。
+
+本机验收：ComfyUI 0.36.0（`0d901722`）在 RTX 5090 上通过 PyTorch 注意力运行；同一份 A 镜头控制 ZIP 分别接入 VACE 和 Fun Control，均完成出片。Fun Control 使用 832×480、25 帧、24 fps、种子 `20261127`、20 步、CFG 6、`uni_pc` / `simple`，未接首帧参考；固定提示词和采样设置，仅替换 A/B 深度序列。抽查第 1、13、25 帧，A 左侧人物占画更大，B 右侧人物占画更大，两人均全身入镜。
+
+动态成片也已在同一环境验收：固定机位，单人 X 坐标从 −1.55 m 移至 +1.55 m，反向对照则交换起终点；两组均为 832×480、57 帧、24 fps。转换后每组解码得到 57 张不同的深度帧，两组像素序列互为倒序。成片保持相同提示词、种子和采样设置，仅替换深度序列；抽查第 1、29、57 帧，人物全身可见，分别呈现左 → 中 → 右和右 → 中 → 左。
+
+这验证的是画面内的位移方向，不代表步态、脚步接触或逐帧位置准确。此示例不接入蒙版或相机几何，也不改变原 VACE 入口。
+
+## 6. Blender 单镜头深度接入（实验性）
+
+**先试用示例。** 从仓库根目录运行；`blender` 可替换为 Blender 可执行文件的路径。无需准备 `.blend`、启动 ComfyUI 或下载模型。使用已安装 ShotDepth 依赖的 Python，输出目录必须尚不存在。
+
+```powershell
+blender -b --factory-startup --python-exit-code 1 --python examples/blender/demo_depth.py -- blender_demo --python .\.venv\Scripts\python.exe
+```
+
+示例会生成米制深度、VACE PNG 和 5 帧 Fun Control WebP，并自检近远深度、背景零值和两种输出的像素一致性。它只验证控制输入，不生成视频。
+
+**使用自己的场景。** 默认只导出当前帧；下面导出第 1 帧。输出目录同样必须尚不存在。
+
+```powershell
+blender -b shot.blend --python-exit-code 1 --python examples/blender/export_depth.py -- blender_depth --start 1 --meters-per-unit 1 --depth-window 2 7
+.\.venv\Scripts\python.exe examples/fun_control/export_webp.py blender_depth/depth.json vace_depth.png --depth-manifest --format vace-png
+.\.venv\Scripts\python.exe examples/fun_control/export_webp.py blender_depth/depth.json depth.webp --depth-manifest --frames 25
+```
+
+VACE 接收单张 PNG（按现有工作流重复），Fun Control 按上一节接入 WebP。导出动画时添加 `--end`（包含末帧），并将 `--frames` 设为实际帧数；动画不能改帧率或截断，VACE PNG 命令仅支持单帧。`--meters-per-unit` 必须按场景的实际比例指定；`--depth-window` 是固定米制灰度窗口，不改变原始深度。
+
+输出为独立 `depth.json` 和逐帧 NPY，不是完整控制 ZIP。仅支持无渲染边界裁剪的单视图透视相机。深度来自求值视图层的首个几何命中，不模拟透明材质、景深、运动模糊或仅渲染时生效的修改器，也不迁移 Blender 场景、蒙版或相机几何。
+
+## 7. App 直出 ComfyUI 深度（1.2）
+
+在 [v1.2.0](https://github.com/MlTt-Z/ShotDepth/releases/tag/v1.2.0) 中，先应用当前镜头的场景草稿，再选择「导出 ComfyUI 深度」（简化模式也可用）。导出只使用当前镜头的已应用场景；Windows 桌面版通过保存对话框保存，源码启动的网页编辑器通过浏览器下载。将得到的 PNG 或 WebP 放入 ComfyUI 输入目录，修改现有工作流的控制分支，无需解压控制 ZIP、另跑 Python 转换脚本或安装自定义节点。v1.1 不含此入口。
+
+- **VACE PNG（仅静态镜头）**：用原生 `Load Image` 读取 PNG，将 `IMAGE` 接到 `Repeat Image Batch`，再把重复批次接到 `WanVaceToVideo.control_video`。节点宽高与 PNG 一致，`amount` 与 `WanVaceToVideo` 的目标帧数 `length` 一致。PNG 不含帧率，在视频输出节点设置所需 FPS。
+- **Fun Control WebP（静态或动态镜头）**：用原生 `Load Image` 读取动画 WebP，将完整的 `IMAGE` 帧批次直接接到 `WanFunControlToVideo.control_video`，不经 `Repeat Image Batch`、Canny 或估深节点。节点宽高和目标帧数与 WebP 一致，视频输出节点的 FPS 需手动设为导出帧率；`Load Image` 的图像批次不会把帧率传给输出节点。
+
+两种格式默认用相机近远裁切面作为深度窗口（近亮远暗）；也可为本次导出设置米制 `[near, far]`，满足 `0 < near < far`。WebP 要求宽高均为 16 的倍数、帧数为 5–117 内的 `4n+1`，且宽 × 高 × 帧数不超过 3200 万。静态 WebP 默认重复 25 帧、24 fps，可调整；动态 WebP 沿用源尺寸、帧数和帧率，不缩放、补帧、截断或重采样。若尺寸不合规，先修改镜头分辨率；若动态帧数或像素预算不合规，调整镜头时长／帧率或降低分辨率，重新应用后再导出。
+
+两个工作流需分别配置匹配的模型权重（Fun Control 使用 Control 权重，不是 VACE 权重）。ShotDepth 不下载或附带模型，也不自动启动生成。原控制 ZIP、MCP、CLI 及 Blender 转换路径不变。

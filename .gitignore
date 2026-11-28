@@ -13,6 +13,7 @@
 !/scene.json
 !/scene.py
 !/shotdepth.py
+!/depth_export.py
 !/vendor/
 /vendor/*
 !/vendor/LICENSE
@@ -21,7 +22,7 @@
 /desktop/*
 !/desktop/.gitignore
 !/desktop/*.cs
-!/desktop/SpikeMark.Desktop.csproj
+!/desktop/ShotDepth.Desktop.csproj
 !/desktop/build.ps1
 !/examples/
 /examples/*
@@ -46,3 +47,10 @@
 /examples/demo/*
 !/examples/demo/comparison.jpg
 !/examples/demo/framing-demo.mp4
+!/examples/fun_control/
+/examples/fun_control/*
+!/examples/fun_control/export_webp.py
+!/examples/blender/
+/examples/blender/*
+!/examples/blender/export_depth.py
+!/examples/blender/demo_depth.py

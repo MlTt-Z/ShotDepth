@@ -1,7 +1,7 @@
 # ShotDepth — 3D shot layout and control export for AI video
 
-在 3D 中摆好人物和机位，把**深度图、实例 ID 蒙版与相机几何**导出给 ComfyUI 等视频工作流。<br>
-Block actors and cameras in 3D, then export **depth maps, instance ID masks, and camera geometry** to workflows such as ComfyUI.
+在 3D 中摆好人物和机位，把**深度图、实例 ID 蒙版与相机几何**导出给视频工作流，也可直接导出 ComfyUI 所需的深度图片。<br>
+Block actors and cameras in 3D, then export **depth maps, instance ID masks, and camera geometry** for video workflows, or export depth images directly for ComfyUI.
 
 [![同一提示词与 seed：有深度时左近右远，无深度时两人近似等高 / Same prompt and seed: depth preserves the intended foreground placement](examples/demo/comparison.jpg)](examples/demo/framing-demo.mp4)
 
@@ -15,11 +15,10 @@ ShotDepth handles blocking, previews, and control export. It does not generate o
 原名 SpikeMark。旧仓库地址会跳转到 ShotDepth；MCP 标识和 v1.1 下载文件名保持不变。<br>
 Formerly SpikeMark. The old repository URL redirects to ShotDepth; the MCP identifier and v1.1 download filenames are unchanged.
 
-v1.1 新增 Windows 桌面版、第一人称布景、实时预览，以及「简化 / 精确」两种界面模式。
+**v1.2.0 · Windows x64**：[GitHub Release](https://github.com/MlTt-Z/ShotDepth/releases/tag/v1.2.0) · [下载便携包 / Download portable ZIP](https://github.com/MlTt-Z/ShotDepth/releases/download/v1.2.0/ShotDepth-v1.2.0-win-x64.zip)
 
-v1.1 adds a Windows desktop app, first-person staging, live previews, and Simple and Precision workspace modes.
-
-Windows x64 便携包 / Windows x64 portable build: [v1.1 GitHub Release](https://github.com/MlTt-Z/ShotDepth/releases/tag/v1.1)（旧版解压后运行 `SpikeMark.exe`；当前源码构建生成 `ShotDepth.exe`。两者均需要 Microsoft Edge WebView2 Runtime / Extract and run `SpikeMark.exe` for the historical release; current source builds produce `ShotDepth.exe`. Both require Microsoft Edge WebView2 Runtime).
+v1.2.0 可直接导出 ComfyUI 所需的 VACE 深度 PNG 和 Fun Control 动画 WebP，无需先导出控制 ZIP 再转换。<br>
+v1.2.0 exports VACE depth PNGs and Fun Control animated WebP files directly for ComfyUI, without a control ZIP or a separate conversion step.
 
 ## 下游对照 / Downstream comparison
 
@@ -79,7 +78,15 @@ Use the same models as G0 and start ComfyUI. Run the script with the project's P
 
 ![上：有深度；下：无深度 / Top: with depth; bottom: without depth](examples/headless/frames-1-13-25.jpg)
 
-## 快速开始
+## 快速开始 / Quick start
+
+### Windows x64 便携版 / Portable app
+
+1. 在 [v1.2.0 发布页 / release page](https://github.com/MlTt-Z/ShotDepth/releases/tag/v1.2.0) 的 Assets 中下载 `ShotDepth-v1.2.0-win-x64.zip`。 / Download `ShotDepth-v1.2.0-win-x64.zip` from Assets.
+2. 解压整个 ZIP，打开解压后的文件夹并运行 `ShotDepth.exe`。 / Extract the entire ZIP, then run `ShotDepth.exe` from the extracted folder.
+3. 包内已包含 Python，无需另装；桌面版需要 Microsoft Edge WebView2 Runtime，若系统未安装请先安装。 / Python is bundled. Install Microsoft Edge WebView2 Runtime if it is not already installed.
+
+### 从源码运行 / Run from source
 
 需要 Python 3.11 和现代浏览器。控制数据由 CPU 计算；交互式 3D 使用 WebGL，不可用时可使用表单和二维视图。Three.js 随项目提供，运行编辑器不依赖 CDN。
 
@@ -99,6 +106,19 @@ py -3.11 -m venv .venv
 2. 使用站立、走路、挥手预设，或在时间轴上编辑自己的关键帧。无法用几何表达的动作可写入 `shot.action_text`；它只传递给下游，不会改变预览或控制图。
 3. 查看预览并提交草稿，再下载场景 JSON 或当前镜头的控制 ZIP。可导入、切换和下载由 1–12 个独立镜头组成的集合，ZIP 每次只导出当前镜头。编辑不会覆盖原始场景文件。
 4. 将场景或控制包交给下游。外部 AI 也可以返回结构化编辑提案；在工作台中预览并选择应用或拒绝。
+
+## 接入现有 ComfyUI 工作流（1.2）
+
+在 v1.2.0 中，先应用场景草稿，再在导出区选择「导出 ComfyUI 深度」（简化模式也可用）。只导出当前镜头的已应用场景，无需解压控制 ZIP、运行转换脚本或安装自定义节点。把导出的图片放入 ComfyUI 的输入目录，在原工作流中接线即可：
+
+| 导出格式 | 原生节点接线 | 对齐参数 |
+| --- | --- | --- |
+| VACE PNG（仅静态） | `Load Image` → `Repeat Image Batch` → `WanVaceToVideo.control_video` | 宽高与 PNG 一致，重复次数等于工作流帧数；在输出节点设置所需 FPS。 |
+| Fun Control WebP（静态或动态） | `Load Image` → `WanFunControlToVideo.control_video`，绕过 Canny 或估深节点 | 宽高、帧数与 WebP 一致；在输出节点单独设置与导出一致的 FPS。 |
+
+深度窗口默认用相机近远裁切面（近亮远暗），可为本次导出单独调整。WebP 宽高均须为 16 的倍数，帧数须为 5–117 内的 `4n+1`，宽 × 高 × 帧数不得超过 3200 万。静态 WebP 默认重复为 25 帧、24 fps，可调整；动态 WebP 保留源尺寸、帧数和帧率，不缩放、不补帧、不截断、不重采样。不符合限制时，先调整镜头分辨率或动态镜头时长／帧率并重新应用，再导出。
+
+只需替换现有工作流的控制输入，不必更换整套工作流。VACE 与 Fun Control 的模型仍由用户分别配置；ShotDepth 不下载模型，也不启动生成。接线细节及原有 ZIP、CLI、Blender 路径见 [AI_INTEGRATION.md](AI_INTEGRATION.md)。
 
 ## 外部接口与输出
 

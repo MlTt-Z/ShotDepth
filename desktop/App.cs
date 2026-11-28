@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace SpikeMark.Desktop;
+namespace ShotDepth.Desktop;
 
 internal static class App
 {

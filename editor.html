@@ -83,7 +83,8 @@
   .mark[data-selected] circle.visible { fill: #c2d3cd; stroke: #778f86; stroke-width: 3; }
   .mark text { fill: #dbe2df; font-size: 11px; paint-order: stroke; stroke: #17181a; stroke-width: 3px; pointer-events: none; }
   #map[data-busy] .mark { cursor: wait; }
-  #export-options, #assets, .handoff { margin-top: 8px; }
+  #export-options, #depth-export, #assets, .handoff { margin-top: 8px; }
+  #depth-export .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #timeline { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 5px 10px; }
   #frame-position { min-height: 24px; padding: 0; }
   #keyframe-list { grid-column: 1 / -1; max-height: 6rem; overflow: auto; }
@@ -235,6 +236,23 @@
           <label>VACE 近端（米）<input id="vace-near" type="number" step="any" placeholder="可选"></label>
           <label>VACE 远端（米）<input id="vace-far" type="number" step="any" placeholder="可选"></label>
           <small class="wide muted">两项留空时不包含 VACE 深度通道。</small>
+        </div>
+      </fieldset>
+      <fieldset id="depth-export" disabled>
+        <legend>导出 ComfyUI 深度</legend>
+        <div class="fields">
+          <label class="wide">格式<select id="depth-format">
+            <option value="vace-png">VACE PNG（静态）</option>
+            <option value="fun-webp">Fun Control WebP</option>
+          </select></label>
+          <small id="depth-size" class="wide">镜头尺寸：—</small>
+          <label>近端（米）<input id="depth-near" type="number" step="any" aria-describedby="depth-window-help"></label>
+          <label>远端（米）<input id="depth-far" type="number" step="any" aria-describedby="depth-window-help"></label>
+          <small id="depth-window-help" class="wide">留空使用相机裁切面，仅影响此次导出。</small>
+          <label id="depth-frames-field" hidden>帧数<input id="depth-frames" type="number" min="5" max="117" step="4" value="25"></label>
+          <label id="depth-fps-field" hidden>帧率（fps）<input id="depth-fps" type="number" step="any" value="24"></label>
+          <small id="depth-source" class="wide" hidden></small>
+          <div class="actions wide"><button id="download-depth" type="button">导出深度</button></div>
         </div>
       </fieldset>
       <details class="handoff" data-mode-detail>
@@ -453,7 +471,7 @@ function updateControls() {
   $('apply-action').disabled = !state.catalog.actions.length;
   $('apply-motion').disabled = !$('custom-motion').value;
   for (const button of $('keyframe-list').children) button.disabled = locked || Number(button.value) === currentFrame();
-  for (const id of ['ground', 'camera', 'action-text', 'submit', 'download', 'download-zip', 'export-options']) $(id).disabled = locked || noScene;
+  for (const id of ['ground', 'camera', 'action-text', 'submit', 'download', 'download-zip', 'export-options', 'depth-export']) $(id).disabled = locked || noScene;
   updateDiscardControl();
   $('shot').disabled = locked || !(state.shotSet?.shots.length > 1);
   $('download-shot-set').disabled = locked || !state.shotSet;
@@ -1096,6 +1114,7 @@ async function accept(result, { selection = state.selected, resetView = false,
     renderShotSelector();
   }
   renderTimeline();
+  renderDepthExport(shotChanged);
   restoreConfirmedFields();
   showEffectiveFrame(frame, { accepted: true, resetView });
   selectEntity(entities().find(entity => entity.id === selection)?.id ?? entities()[0]?.id ?? '');
@@ -1177,7 +1196,8 @@ $('editor').addEventListener('submit', event => {
 $('retry').addEventListener('click', () => run('/api/scene'));
 function download(blob, extension, versions) {
   const url = URL.createObjectURL(blob);
-  const label = extension === 'zip' ? '控制包 ZIP' : '场景 JSON';
+  const imageLabel = extension === 'png' ? ' VACE PNG' : extension === 'webp' ? ' Fun Control WebP' : '';
+  const label = imageLabel || (extension === 'zip' ? '控制包 ZIP' : '场景 JSON');
   if (window.chrome?.webview) pendingSceneExports.set(url, { label, versions });
   const link = document.createElement('a');
   link.href = url;
@@ -1319,6 +1339,141 @@ $('download-zip').addEventListener('click', () => {
       throw new Error('接口未返回 ZIP 文件。');
     }
     download(await response.blob(), 'zip');
+  });
+});
+function saveDesktopDepth(bridge, format, body) {
+  // Match the backend's UTF-8 request limit before sending it over the bridge.
+  if (new TextEncoder().encode(body).byteLength > 512 * 1024) {
+    throw new Error('请求大小超出限制。');
+  }
+  const id = crypto.randomUUID();
+  // The host times generation; the native save dialog can remain open until the user responds.
+  return new Promise((resolve, reject) => {
+    const onResult = ({ data }) => {
+      if (data?.type !== 'depth-saved' || data.id !== id) return;
+      bridge.removeEventListener('message', onResult);
+      resolve(data);
+    };
+    bridge.addEventListener('message', onResult);
+    try {
+      bridge.postMessage({ type: 'save-depth', id, format, body });
+    } catch (error) {
+      bridge.removeEventListener('message', onResult);
+      reject(error);
+    }
+  });
+}
+function hasDepthMotion(document) {
+  // 与后端 is_animated 一致：只比较关键帧位姿，缺省关节与显式 0 等效。
+  return document.scene.entities.some(({ keyframes }) => {
+    if (!(keyframes?.length > 1)) return false;
+    const [first, ...rest] = keyframes;
+    return rest.some(key => changed(first.pos, key.pos) || first.yaw !== key.yaw ||
+      Object.keys({ ...first.joints, ...key.joints }).some(joint =>
+        (first.joints[joint] ?? 0) !== (key.joints[joint] ?? 0)));
+  });
+}
+function renderDepthExport(reset = false) {
+  const document = state.document;
+  const dynamic = hasDepthMotion(document);
+  const format = $('depth-format');
+  format.options[0].disabled = dynamic;
+  if (reset || (dynamic && format.value === 'vace-png')) {
+    format.value = dynamic ? 'fun-webp' : 'vace-png';
+  }
+  const near = $('depth-near'), far = $('depth-far');
+  if (reset) {
+    near.value = far.value = '';
+    $('depth-frames').value = '25';
+    $('depth-fps').value = '24';
+  }
+  const camera = document.camera;
+  near.placeholder = String(camera.near);
+  far.placeholder = String(camera.far);
+  $('depth-window-help').textContent = `留空使用相机裁切面（${camera.near}–${camera.far} 米），不修改镜头。`;
+  $('depth-size').textContent = `镜头尺寸：${document.resolution.join(' × ')} 像素`;
+  $('depth-frames-field').hidden = $('depth-fps-field').hidden = dynamic || format.value !== 'fun-webp';
+  $('depth-source').hidden = !dynamic;
+  $('depth-source').textContent = dynamic
+    ? `动态源：${state.confirmedFrame.count} 帧 · ${document.shot.fps} fps。仅支持 WebP，沿用源帧数、帧率和尺寸。` : '';
+}
+$('depth-format').addEventListener('change', () => renderDepthExport());
+$('download-depth').addEventListener('click', () => {
+  if (!canDownload()) return;
+  const document = state.document;
+  const format = $('depth-format').value;
+  const webp = format === 'fun-webp';
+  const dynamic = hasDepthMotion(document);
+  const payload = { document, format };
+  const near = $('depth-near'), far = $('depth-far');
+  const depthValue = (input, fallback) => input.value || input.validity.badInput ? input.valueAsNumber : fallback;
+  const a = depthValue(near, document.camera.near), b = depthValue(far, document.camera.far);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || !(0 < a && a < b)) {
+    status('深度窗口需要满足 0 < 近端 < 远端；清空输入可恢复相机裁切面。', true);
+    focusField(!Number.isFinite(a) || !(a > 0) ? near : far);
+    return;
+  }
+  if (near.value || far.value) payload.vace_window = [a, b];
+  const [width, height] = document.resolution;
+  const framesField = $('depth-frames'), fpsField = $('depth-fps');
+  const frames = dynamic ? state.confirmedFrame.count : framesField.valueAsNumber;
+  const fps = dynamic ? document.shot.fps : fpsField.valueAsNumber;
+  const displayNumber = value => Number.isFinite(value) ? value : '未填写或无效';
+  const source = `${width} × ${height} 像素、${displayNumber(frames)} 帧、${displayNumber(fps)} fps`;
+  if (webp) {
+    const resolutionHelp = '请修改场景 JSON 的 resolution 后重新打开，再导出。';
+    if (!Number.isInteger(frames) || frames < 5 || frames > 117 || frames % 4 !== 1) {
+      status(`当前：${source}。WebP 帧数必须为 5、9、13…117。${dynamic
+        ? '请修改场景 JSON 中的 shot.duration_s 或 shot.fps 并检查关键帧范围，再重新打开场景。' : '请调整导出帧数。'}`, true);
+      if (!dynamic) focusField(framesField);
+      return;
+    }
+    if (width % 16 || height % 16) {
+      status(`当前：${source}。WebP 的宽和高都必须是 16 的倍数。${resolutionHelp}`, true);
+      return;
+    }
+    if (width * height * frames > 32000000) {
+      status(`当前：${source}。WebP 总像素数不能超过 3200 万。${dynamic
+        ? resolutionHelp : '请减少导出帧数，或降低场景 JSON 的 resolution 后重新打开。'}`, true);
+      return;
+    }
+    if (!dynamic) {
+      if (!Number.isFinite(fps) || fps <= 0) {
+        status(`当前：${source}。请填写大于 0 的有限帧率，例如 24。`, true);
+        focusField(fpsField);
+        return;
+      }
+      Object.assign(payload, { frames, fps });
+    }
+  }
+  withBusy('正在生成 ComfyUI 深度…', '深度导出失败', async () => {
+    const exportError = message => {
+      const suggestion = webp && message.startsWith('fps 无法用 WebP')
+        ? dynamic ? '。请修改场景 JSON 中的 shot.fps 后重新打开场景。' : '。请调整导出帧率，例如设为 24。' : '';
+      return new Error(webp ? `当前：${source}。${message}${suggestion}` : message);
+    };
+    const body = scenePayload(payload);
+    const bridge = window.chrome?.webview;
+    if (bridge) {
+      const result = await saveDesktopDepth(bridge, format, body);
+      const label = webp ? 'Fun Control WebP' : 'VACE PNG';
+      if (result.ok) status(`已保存 ${label}。`);
+      else if (result.canceled) status(`已取消导出 ${label}。`);
+      else throw exportError(result.error || '未能保存图片。');
+      return;
+    }
+    const response = await fetch('/api/export-depth', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => null);
+      throw exportError(result?.error || `接口返回 HTTP ${response.status}。`);
+    }
+    const extension = webp ? 'webp' : 'png';
+    if (response.headers.get('Content-Type')?.split(';')[0].trim() !== `image/${extension}`) {
+      throw new Error(`接口未返回 ${extension.toUpperCase()} 文件。`);
+    }
+    download(await response.blob(), extension);
   });
 });
 function defaultAssetPosition(bounds) {

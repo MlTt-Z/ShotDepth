@@ -4,7 +4,10 @@ import io
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from threading import BoundedSemaphore, Thread
+from time import monotonic
 
+from depth_export import DepthExportTimeout, export_depth
 from scene import (
     DEFAULT_HUMAN_BODY, MAX_DYNAMIC_FRAMES, component_catalog, frame_count, human_capsules, load_scene,
     prop_boxes, sample_scene, validate_scene, validate_shot_set,
@@ -137,6 +140,48 @@ def make_proposal(document, operations, frame=0, *, include_png=True):
 
 
 PLAYBACK_MAX_BYTES = 2 * 1024 * 1024
+DEPTH_EXPORT_SECONDS = 150  # Leave time to return an error before the desktop's 180s timeout.
+DEPTH_SOCKET_TIMEOUT = 10
+
+
+class EditorServer(HTTPServer):
+    """Keep editor requests serial; hand only admitted depth exports to a worker."""
+
+    def __init__(self, *args, **kwargs):
+        self.depth_slot = BoundedSemaphore(1)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        handler = self.RequestHandlerClass(request, client_address, self)
+        if handler.depth_length is None:
+            self.shutdown_request(request)
+            return
+        try:
+            Thread(target=self._export_depth, args=(handler,), name='depth-export', daemon=True).start()
+        except RuntimeError:
+            try:
+                handler.send_json(503, {'error': '无法启动深度导出，请重试'})
+            finally:
+                self._finish_depth(handler)
+
+    def _finish_depth(self, handler):
+        try:
+            handler.depth_length = None
+            handler.finish()
+        finally:
+            try:
+                self.shutdown_request(handler.connection)
+            finally:
+                self.depth_slot.release()
+
+    def _export_depth(self, handler):
+        try:
+            handler.export_depth_request()
+        except OSError:
+            # The desktop may disconnect before the response can be written.
+            pass
+        finally:
+            self._finish_depth(handler)
 
 
 def _playback_json(value):
@@ -190,6 +235,43 @@ def make_handler(initial, page, assets):
     playback_source = (initial['baseline'], initial['document'])
 
     class EditorHandler(BaseHTTPRequestHandler):
+        depth_length = None
+
+        def finish(self):
+            # The server owns the socket until the admitted export worker replies.
+            if self.depth_length is None:
+                super().finish()
+
+        def export_depth_request(self):
+            self.connection.settimeout(DEPTH_SOCKET_TIMEOUT)
+            try:
+                remaining = self.depth_length
+                body = bytearray()
+                while remaining:
+                    if monotonic() >= self.depth_deadline:
+                        raise DepthExportTimeout('深度导出请求超时')
+                    chunk = self.rfile.read1(min(remaining, 64 * 1024))
+                    if not chunk:
+                        raise ValueError('深度导出请求长度不符')
+                    body.extend(chunk)
+                    remaining -= len(chunk)
+                request = json.loads(body.decode('utf-8'))
+                if (not isinstance(request, dict) or not {'document', 'format'} <= request.keys()
+                        or request.keys() - {'document', 'format', 'vace_window', 'frames', 'fps'}):
+                    raise ValueError('深度导出需要 document 和 format；可选 vace_window、frames、fps')
+                content, content_type = export_depth(**request, deadline=self.depth_deadline)
+            except TimeoutError as exc:
+                self.send_json(504, {'error': str(exc) if isinstance(exc, DepthExportTimeout) else '读取深度导出请求超时'})
+            except (ValueError, RecursionError) as exc:
+                self.send_json(400, {'error': str(exc)})
+            except OSError as exc:
+                self.send_json(500, {'error': f'深度导出失败：{exc}'})
+            except Exception:
+                self.log_error('Unexpected error during depth export')
+                self.send_json(500, {'error': '深度导出失败'})
+            else:
+                self.send_bytes(200, content, content_type)
+
         def playback(self, request):
             nonlocal playback_source
             if not isinstance(request, dict) or set(request) not in (
@@ -257,8 +339,8 @@ def make_handler(initial, page, assets):
             nonlocal playback_source
             if not self.allowed_host():
                 return
-            if self.path not in ('/api/edit', '/api/preview', '/api/export', '/api/proposal', '/api/shot-set',
-                                 '/api/playback', '/api/live-preview'):
+            if self.path not in ('/api/edit', '/api/preview', '/api/export', '/api/export-depth', '/api/proposal',
+                                 '/api/shot-set', '/api/playback', '/api/live-preview'):
                 self.send_json(404, {'error': '未找到接口'})
                 return
             origin = self.headers.get('Origin')
@@ -281,6 +363,15 @@ def make_handler(initial, page, assets):
                     request = json.loads(body.decode('utf-8'), object_pairs_hook=_playback_object,
                                          parse_constant=_reject_json_constant)
                     self.playback(request)
+                    return
+                if self.path == '/api/export-depth':
+                    if len(self.headers.get_all('Content-Length', [])) != 1 or self.headers.get('Transfer-Encoding') is not None:
+                        raise ValueError('深度导出请求需要且只接受 Content-Length 定界')
+                    if not self.server.depth_slot.acquire(blocking=False):
+                        self.send_json(503, {'error': '已有深度导出正在进行，请稍后重试'})
+                        return
+                    self.depth_deadline = monotonic() + DEPTH_EXPORT_SECONDS
+                    self.depth_length = length
                     return
                 request = json.loads(self.rfile.read(length).decode('utf-8'))
                 if self.path == '/api/live-preview':
@@ -328,7 +419,7 @@ def main():
     initial = preview_snapshot(doc)
     assets = {'/three.min.js': (root/'vendor'/'three.min.js').read_bytes(),
               '/editor3d.js': (root/'editor3d.js').read_bytes()}
-    with HTTPServer(('127.0.0.1', args.port), make_handler(initial, (root/'editor.html').read_bytes(), assets)) as server:
+    with EditorServer(('127.0.0.1', args.port), make_handler(initial, (root/'editor.html').read_bytes(), assets)) as server:
         url = f'http://127.0.0.1:{server.server_port}/'
         print(url, flush=True)
         if args.open:

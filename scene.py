@@ -330,11 +330,14 @@ def _validate_human_bounds(entity, width, depth, pos, yaw, joints=None, frame=No
             raise ValueError(f"{prefix}人物「{label}」超出沙盒边界，请调整站位、朝向或沙盒宽深。")
 
 
-def validate_scene(doc):
+def validate_scene(doc, *, check=None):
     """Return doc unchanged or raise ValueError with the offending field path.
 
     Omitted yaw and roll mean 0; omitted human pose means 'stand'.
+    Optional check lets the caller stop long validation cooperatively.
     """
+    if check is not None:
+        check()
     _object(doc, "document", ("version", "units", "up", "resolution", "scene", "camera", "shot"))
     _literal(doc["version"], "version", "0.1")
     _literal(doc["units"], "units", "meter")
@@ -365,6 +368,8 @@ def validate_scene(doc):
     count = frame_count(doc)
     animated = []
     for index, entity in enumerate(entities):
+        if check is not None:
+            check()
         _validate_entity(entity, f"scene.entities[{index}]", seen, count)
         if entity["kind"] != "human":
             continue
@@ -382,6 +387,8 @@ def validate_scene(doc):
         _check_dynamic_budget(count)
         for frame in range(count):
             for entity in animated:
+                if check is not None:
+                    check()
                 pos, yaw, joints = _sample_track(entity["keyframes"], frame)
                 _validate_human_bounds(entity, width, depth, pos, yaw, joints, frame)
     return doc
